@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
+from collections.abc import Callable
+from typing import Any
 
 from backend.agents.extractor import extract_document
 from backend.agents.router import decide_route
@@ -54,61 +55,56 @@ def build_graph(settings: Settings):
 
 def run_pipeline(state: PipelineState, settings: Settings) -> PipelineState:
     graph = build_graph(settings)
-    result = graph.invoke(
+    return graph.invoke(
         state,
-        config={"configurable": {"thread_id": state.run_id}},
+        config={"configurable": {"thread_id": state["run_id"]}},
     )
-    if isinstance(result, PipelineState):
-        return result
-    return PipelineState.model_validate(result)
 
 
-def _guarded(fn):
-    def wrapped(state: PipelineState) -> PipelineState:
-        if state.error:
-            return state
+def _guarded(
+    fn: Callable[[PipelineState], dict[str, Any]],
+) -> Callable[[PipelineState], dict[str, Any]]:
+    def wrapped(state: PipelineState) -> dict[str, Any]:
+        if state.get("error"):
+            return {}
         try:
-            next_state = fn(state)
-            next_state.updated_at = datetime.now(UTC)
-            return next_state
+            return fn(state)
         except Exception as exc:
-            state.error = str(exc)
-            state.updated_at = datetime.now(UTC)
-            return state
+            return {"error": str(exc)}
 
     return wrapped
 
 
-def _extract(state: PipelineState, settings: Settings) -> PipelineState:
-    if state.document is None:
-        raise ValueError("Pipeline state is missing document input")
-    state.extraction = extract_document(state.document, settings)
-    return state
+def _extract(state: PipelineState, settings: Settings) -> dict[str, Any]:
+    return {
+        "extraction": extract_document(
+            run_id=state["run_id"],
+            document_bytes=state["document_bytes"],
+            document_mime=state["document_mime"],
+            settings=settings,
+        ),
+    }
 
 
-def _validate(state: PipelineState, settings: Settings) -> PipelineState:
-    if state.extraction is None:
-        raise ValueError("Pipeline state is missing extraction result")
-    ruleset = load_ruleset(state.customer_id)
-    state.validation = validate_extraction(
-        state.extraction,
-        ruleset,
-        settings.confidence_threshold,
-    )
-    return state
+def _validate(state: PipelineState, settings: Settings) -> dict[str, Any]:
+    extraction = state.get("extraction")
+    if extraction is None:
+        raise ValueError("Pipeline state is missing extraction output")
+    ruleset = load_ruleset(state["customer_id"])
+    return {"validation": validate_extraction(extraction, ruleset)}
 
 
-def _route(state: PipelineState, settings: Settings) -> PipelineState:
-    if state.validation is None:
-        raise ValueError("Pipeline state is missing validation result")
-    state.decision = decide_route(state.validation, settings)
-    return state
+def _route(state: PipelineState, settings: Settings) -> dict[str, Any]:
+    validation = state.get("validation")
+    if validation is None:
+        raise ValueError("Pipeline state is missing validation output")
+    return {"decision": decide_route(validation, settings)}
 
 
-def _store(state: PipelineState, settings: Settings) -> PipelineState:
+def _store(state: PipelineState, settings: Settings) -> dict[str, Any]:
     save_pipeline_run(state, settings.db_path)
-    return state
+    return {}
 
 
 def _continue_or_end(state: PipelineState) -> str:
-    return "end" if state.error else "continue"
+    return "end" if state.get("error") else "continue"

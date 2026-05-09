@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -8,7 +7,7 @@ from pydantic import BaseModel
 
 from backend.config import get_settings
 from backend.pipeline.graph import run_pipeline
-from backend.pipeline.state import DocumentInput, PipelineState
+from backend.pipeline.state import PipelineState
 from backend.storage.db import get_run, list_runs, save_pipeline_run
 from backend.storage.query import run_nl_query
 
@@ -30,17 +29,21 @@ async def start_pipeline(
     state = PipelineState(
         run_id=run_id,
         customer_id=customer_id,
-        document=DocumentInput(
-            filename=file.filename or "document",
-            content_type=file.content_type or "application/octet-stream",
-            content_base64=base64.b64encode(content).decode("ascii"),
-            customer_id=customer_id,
-        ),
+        document_bytes=content,
+        document_mime=file.content_type or "application/octet-stream",
+        extraction=None,
+        validation=None,
+        decision=None,
+        error=None,
     )
     result = run_pipeline(state, settings)
-    if result.error:
-        save_pipeline_run(result, settings.db_path)
-    return {"run_id": run_id, "state": _state_response(result)}
+    result["metadata"] = {"document_name": file.filename or "document"}  # type: ignore[typeddict-unknown-key]
+    save_pipeline_run(result, settings.db_path)
+    return {
+        "run_id": run_id,
+        "status": "error" if result.get("error") else "complete",
+        "error": result.get("error"),
+    }
 
 
 @router.get("/pipeline/{run_id}")
@@ -61,16 +64,4 @@ def query(request: QueryRequest) -> dict:
 @router.get("/runs")
 def runs() -> list[dict]:
     settings = get_settings(require_gemini=False)
-    return list_runs(settings.db_path)
-
-
-def _state_response(state: PipelineState) -> dict:
-    data = state.model_dump(mode="json")
-    if data.get("document"):
-        data["document"] = {
-            "filename": state.document.filename if state.document else None,
-            "content_type": state.document.content_type if state.document else None,
-            "customer_id": state.customer_id,
-        }
-    return data
-
+    return list_runs(settings.db_path, limit=20)

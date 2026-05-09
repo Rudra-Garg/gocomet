@@ -8,6 +8,8 @@ dependencies = [
     "google-genai==0.6.0",
     "langgraph==0.2.60",
     "langgraph-checkpoint-sqlite==2.0.1",
+    "langfuse>=2.57.0",
+    "litellm>=1.55.0",
     "pydantic==2.10.4",
     "python-multipart==0.0.20",
     "uvicorn[standard]==0.34.0",
