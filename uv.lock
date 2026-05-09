@@ -2265,6 +2265,7 @@ dependencies = [
     { name = "langgraph-checkpoint-sqlite" },
     { name = "litellm" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -2283,6 +2284,7 @@ requires-dist = [
     { name = "langgraph-checkpoint-sqlite", specifier = "==2.0.1" },
     { name = "litellm", specifier = ">=1.55.0" },
     { name = "pydantic", specifier = "==2.10.4" },
+    { name = "python-dotenv", specifier = "==1.2.2" },
     { name = "python-multipart", specifier = "==0.0.20" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.34.0" },
 ]

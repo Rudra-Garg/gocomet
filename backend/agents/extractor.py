@@ -66,6 +66,9 @@ Return JSON with this exact top-level shape:
   "description_of_goods": {{"value": "string or null", "confidence": 0.0}},
   "gross_weight": {{"value": "string or null", "confidence": 0.0}}
 }}
+
+For hs_code, include every visible HS/HTS code as a comma-separated string.
+For incoterms, return only the standard code, such as FOB or CIF, not the place.
 """.strip()
     if retry_feedback:
         prompt = f"{prompt}\n\n{retry_feedback}"

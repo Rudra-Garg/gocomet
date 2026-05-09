@@ -5,7 +5,7 @@ const ACCEPTED_TYPES = ".pdf,.png,.jpg,.jpeg";
 
 export default function UploadPanel({ onUpload, isSubmitting }) {
   const [file, setFile] = useState(null);
-  const [customerId, setCustomerId] = useState("acme");
+  const [customerId, setCustomerId] = useState("abc");
 
   function submit(event) {
     event.preventDefault();
@@ -20,6 +20,7 @@ export default function UploadPanel({ onUpload, isSubmitting }) {
       <label>
         Customer
         <select value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
+          <option value="abc">abc imports</option>
           <option value="acme">acme</option>
           <option value="globex">globex</option>
           <option value="initech">initech</option>

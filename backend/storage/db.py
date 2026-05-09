@@ -263,7 +263,7 @@ def export_rows(rows: Iterable[sqlite3.Row]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def load_ruleset(customer_id: str) -> dict[str, str]:
+def load_ruleset(customer_id: str) -> dict[str, str | list[str]]:
     ruleset_path = Path("data") / "rulesets" / f"customer_{customer_id}.json"
     if not ruleset_path.exists():
         raise FileNotFoundError(f"No ruleset configured for customer_id={customer_id}")

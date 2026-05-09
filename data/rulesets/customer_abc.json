@@ -1,0 +1,6 @@
+{
+  "consignee_name": "ABC Imports Pvt Ltd",
+  "incoterms": ["FOB", "CIF"],
+  "hs_code": ["847330", "851762"],
+  "port_of_discharge": "Nhava Sheva"
+}
