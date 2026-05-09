@@ -113,6 +113,16 @@ textarea {
   padding: 0 14px;
 }
 
+.spinner {
+  border: 3px solid #d8ded8;
+  border-top-color: #245c4f;
+  border-radius: 50%;
+  height: 22px;
+  justify-self: center;
+  width: 22px;
+  animation: spin 0.8s linear infinite;
+}
+
 .run-list {
   margin-top: 28px;
 }
@@ -196,6 +206,13 @@ textarea {
   width: 100%;
 }
 
+.email-review {
+  color: #3f494d;
+  display: grid;
+  font-weight: 700;
+  margin-top: 12px;
+}
+
 .field-grid {
   display: grid;
   gap: 12px;
@@ -236,6 +253,40 @@ small {
   height: 100%;
 }
 
+.confidence.compact {
+  min-width: 140px;
+}
+
+.confidence i.high {
+  background: #2f846f;
+}
+
+.confidence i.medium {
+  background: #c4932f;
+}
+
+.confidence i.low {
+  background: #ba2f2b;
+}
+
+.badge {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 8px;
+}
+
+.badge.clear {
+  background: #dff1e5;
+  color: #245c4f;
+}
+
+.badge.uncertain {
+  background: #e9eeef;
+  color: #566064;
+}
+
 .validation-list {
   display: grid;
   gap: 10px;
@@ -260,6 +311,21 @@ small {
 
 .validation-row.uncertain {
   border-color: #ba2f2b;
+}
+
+.validation-status.match td:nth-child(2) {
+  color: #2f846f;
+  font-weight: 800;
+}
+
+.validation-status.mismatch td:nth-child(2) {
+  color: #ba2f2b;
+  font-weight: 800;
+}
+
+.validation-status.uncertain td:nth-child(2) {
+  color: #69767a;
+  font-weight: 800;
 }
 
 .query-form {
@@ -312,3 +378,8 @@ td {
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

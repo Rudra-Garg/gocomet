@@ -1,6 +1,4 @@
-export default function ExtractionView({ extraction }) {
-  const fields = extraction?.fields || [];
-
+export default function ExtractionView({ fields }) {
   return (
     <section className="panel">
       <header>
@@ -9,25 +7,53 @@ export default function ExtractionView({ extraction }) {
       {fields.length === 0 ? (
         <p className="muted">Fields appear after a run completes extraction.</p>
       ) : (
-        <div className="field-grid">
-          {fields.map((field) => (
-            <article className="field-card" key={field.name}>
-              <div>
-                <span className="label">{field.name}</span>
-                <strong>{field.value || "Not found"}</strong>
-              </div>
-              <div className="confidence">
-                <span>{Math.round(field.confidence * 100)}%</span>
-                <div>
-                  <i style={{ width: `${Math.round(field.confidence * 100)}%` }} />
-                </div>
-              </div>
-              {field.source_text && <p>{field.source_text}</p>}
-            </article>
-          ))}
-        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Extracted Value</th>
+              <th>Confidence</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fields.map((field) => (
+              <tr key={field.field_name}>
+                <td>{field.field_name}</td>
+                <td>{field.value || "Not found"}</td>
+                <td>
+                  <div className="confidence compact">
+                    <span>{Math.round(field.confidence * 100)}%</span>
+                    <div>
+                      <i
+                        className={confidenceClass(field.confidence)}
+                        style={{ width: `${Math.round(field.confidence * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  {field.uncertain ? (
+                    <span className="badge uncertain">UNCERTAIN</span>
+                  ) : (
+                    <span className="badge clear">OK</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </section>
   );
 }
 
+function confidenceClass(confidence) {
+  if (confidence >= 0.8) {
+    return "high";
+  }
+  if (confidence >= 0.5) {
+    return "medium";
+  }
+  return "low";
+}

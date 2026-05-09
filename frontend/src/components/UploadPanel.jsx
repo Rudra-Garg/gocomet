@@ -40,7 +40,7 @@ export default function UploadPanel({ onUpload, isSubmitting }) {
         <Send size={16} />
         {isSubmitting ? "Running" : "Run"}
       </button>
+      {isSubmitting && <span className="spinner" aria-label="Pipeline is running" />}
     </form>
   );
 }
-

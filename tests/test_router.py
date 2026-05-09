@@ -1,66 +1,85 @@
-from backend.agents.router import _determine_action
-from backend.pipeline.state import RouterAction, ValidationItem, ValidationResult
+from backend.agents import router
+from backend.pipeline.state import FieldValidationResult, ValidationOutput
 
 
 def test_router_flags_any_uncertain_first() -> None:
-    validation = ValidationResult(
-        items=[
-            ValidationItem(
-                field="incoterms",
-                expected="FOB",
-                actual="CIF",
+    validation = ValidationOutput(
+        run_id="run-1",
+        results=[
+            FieldValidationResult(
+                field_name="incoterms",
                 status="mismatch",
-                confidence=0.95,
-                message="Mismatch",
+                found="CIF",
+                expected="FOB",
             ),
-            ValidationItem(
-                field="hs_code",
-                expected="8471.30",
-                actual=None,
+            FieldValidationResult(
+                field_name="hs_code",
                 status="uncertain",
-                confidence=0,
-                message="Missing",
+                found=None,
+                expected="8471.30",
             ),
         ],
-        mismatched_count=1,
-        uncertain_count=1,
+        has_mismatches=True,
+        has_uncertain=True,
     )
 
-    assert _determine_action(validation) == RouterAction.FLAG_REVIEW
+    assert router._determine_action(validation) == "flag_review"
 
 
 def test_router_drafts_amendment_for_mismatch_without_uncertainty() -> None:
-    validation = ValidationResult(
-        items=[
-            ValidationItem(
-                field="incoterms",
-                expected="FOB",
-                actual="CIF",
+    validation = ValidationOutput(
+        run_id="run-1",
+        results=[
+            FieldValidationResult(
+                field_name="incoterms",
                 status="mismatch",
-                confidence=0.95,
-                message="Mismatch",
+                found="CIF",
+                expected="FOB",
             ),
         ],
-        mismatched_count=1,
+        has_mismatches=True,
+        has_uncertain=False,
     )
 
-    assert _determine_action(validation) == RouterAction.DRAFT_AMENDMENT
+    assert router._determine_action(validation) == "draft_amendment"
 
 
 def test_router_auto_approves_clean_validation() -> None:
-    validation = ValidationResult(
-        items=[
-            ValidationItem(
-                field="incoterms",
-                expected="FOB",
-                actual="FOB",
+    validation = ValidationOutput(
+        run_id="run-1",
+        results=[
+            FieldValidationResult(
+                field_name="incoterms",
                 status="match",
-                confidence=0.95,
-                message="Match",
+                found="FOB",
+                expected="FOB",
             ),
         ],
-        matched_count=1,
+        has_mismatches=False,
+        has_uncertain=False,
     )
 
-    assert _determine_action(validation) == RouterAction.AUTO_APPROVE
+    assert router._determine_action(validation) == "auto_approve"
 
+
+def test_router_amendment_prompt_includes_every_mismatch() -> None:
+    prompt = router._amendment_prompt(
+        [
+            FieldValidationResult(
+                field_name="incoterms",
+                status="mismatch",
+                found="CIF",
+                expected="FOB",
+            ),
+            FieldValidationResult(
+                field_name="hs_code",
+                status="mismatch",
+                found="1234",
+                expected="8471.30",
+            ),
+        ],
+    )
+
+    assert "Field: incoterms | Found: CIF | Expected: FOB" in prompt
+    assert "Field: hs_code | Found: 1234 | Expected: 8471.30" in prompt
+    assert "Cargo Group Validation Team" in prompt

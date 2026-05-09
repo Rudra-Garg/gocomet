@@ -33,14 +33,16 @@ export default function RouterDecision({ decision, error }) {
       </div>
       <p>{decision.reasoning}</p>
       {action === "draft_amendment" && (
-        <textarea
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          rows={7}
-          aria-label="Amendment email"
-        />
+        <label className="email-review">
+          Review and edit before sending
+          <textarea
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            rows={7}
+            aria-label="Amendment email"
+          />
+        </label>
       )}
     </section>
   );
 }
-

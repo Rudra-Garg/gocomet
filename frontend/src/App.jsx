@@ -16,7 +16,7 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isComplete = useMemo(
-    () => Boolean(runData?.action || runData?.decision?.action || runData?.error),
+    () => Boolean(runData?.action || runData?.error),
     [runData],
   );
 
@@ -33,7 +33,7 @@ export default function App() {
       try {
         const nextRun = await fetchJson(`${API_BASE}/api/pipeline/${activeRunId}`);
         setRunData(nextRun);
-        if (nextRun.action || nextRun.decision?.action || nextRun.error) {
+        if (nextRun.action || nextRun.error) {
           fetchRuns();
         }
       } catch (pollError) {
@@ -71,7 +71,11 @@ export default function App() {
       }
       const payload = await response.json();
       setActiveRunId(payload.run_id);
-      setRunData(payload.state);
+      if (payload.error) {
+        setRunData({ run_id: payload.run_id, error: payload.error });
+        return;
+      }
+      setRunData(await fetchJson(`${API_BASE}/api/pipeline/${payload.run_id}`));
       fetchRuns();
     } catch (uploadError) {
       setError(uploadError.message);
@@ -110,9 +114,9 @@ export default function App() {
 
         <section className="content">
           {error && <div className="error-banner">{error}</div>}
-          <RouterDecision decision={runData?.decision || runData} error={runData?.error} />
-          <ExtractionView extraction={runData?.extraction} />
-          <ValidationView validation={runData?.validation} />
+          <RouterDecision decision={runData?.decision} error={runData?.error} />
+          <ExtractionView fields={runData?.extraction || []} />
+          <ValidationView results={runData?.validation || []} />
           <QueryPanel apiBase={API_BASE} />
         </section>
       </section>
@@ -127,4 +131,3 @@ async function fetchJson(url) {
   }
   return response.json();
 }
-

@@ -12,16 +12,17 @@ def test_run_nl_query_accepts_select_and_returns_rows(monkeypatch, tmp_path) -> 
         connection.execute(
             """
             INSERT INTO pipeline_runs (
-                run_id, customer_id, action, error, created_at, updated_at
+                run_id, customer_id, document_name, action,
+                has_mismatches, has_uncertain, created_at
             )
-            VALUES ('run-1', 'acme', 'auto_approve', NULL, '2026-01-01', '2026-01-01')
+            VALUES ('run-1', 'acme', 'invoice.pdf', 'auto_approve', 0, 0, '2026-01-01')
             """,
         )
 
     monkeypatch.setattr(
         query,
         "generate_text",
-        lambda settings, prompt: "```sql\nSELECT run_id, action FROM pipeline_runs\n```",
+        lambda settings, prompt, **kwargs: "```sql\nSELECT run_id, action FROM pipeline_runs\n```",
     )
 
     result = query.run_nl_query(
@@ -39,10 +40,10 @@ def test_run_nl_query_rejects_non_select(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
         query,
         "generate_text",
-        lambda settings, prompt: "UPDATE pipeline_runs SET action = 'x'",
+        lambda settings, prompt, **kwargs: "UPDATE pipeline_runs SET action = 'x'",
     )
 
-    with pytest.raises(ValueError, match="Only SELECT"):
+    with pytest.raises(ValueError, match="Only SELECT queries allowed"):
         query.run_nl_query(
             "change data",
             Settings(gemini_api_key="test", db_path=db_path),
@@ -54,7 +55,7 @@ def test_run_nl_query_rejects_multiple_statements(monkeypatch, tmp_path) -> None
     monkeypatch.setattr(
         query,
         "generate_text",
-        lambda settings, prompt: "SELECT * FROM pipeline_runs; SELECT 1",
+        lambda settings, prompt, **kwargs: "SELECT * FROM pipeline_runs; SELECT 1",
     )
 
     with pytest.raises(ValueError, match="Only one SELECT"):
@@ -62,4 +63,3 @@ def test_run_nl_query_rejects_multiple_statements(monkeypatch, tmp_path) -> None
             "show runs",
             Settings(gemini_api_key="test", db_path=db_path),
         )
-

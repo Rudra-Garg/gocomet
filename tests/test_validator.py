@@ -1,19 +1,24 @@
 from backend.agents.validator import validate_extraction
-from backend.pipeline.state import ExtractedField, ExtractionResult
+from backend.pipeline.state import ExtractedField, ExtractionOutput
 
 
-def test_validator_marks_match_mismatch_uncertain_and_no_rule() -> None:
-    extraction = ExtractionResult(
-        fields=[
-            ExtractedField(
-                name="consignee_name",
-                value="ACME Corporation",
-                confidence=0.99,
-            ),
-            ExtractedField(name="incoterms", value="CIF", confidence=0.98),
-            ExtractedField(name="port_of_discharge", value=None, confidence=0.2),
-            ExtractedField(name="invoice_number", value="INV-1", confidence=0.95),
-        ],
+def test_extracted_field_marks_uncertain_below_half() -> None:
+    field = ExtractedField(value="CIF", confidence=0.49)
+
+    assert field.uncertain is True
+
+
+def test_validator_marks_match_mismatch_uncertain_and_no_rule_as_match() -> None:
+    extraction = ExtractionOutput(
+        run_id="run-1",
+        invoice_number=ExtractedField(value="INV-1", confidence=0.95),
+        consignee_name=ExtractedField(value=" acme corporation ", confidence=0.99),
+        hs_code=ExtractedField(value="8471.30", confidence=0.99),
+        port_of_loading=ExtractedField(value="Shanghai, CN", confidence=0.97),
+        port_of_discharge=ExtractedField(value=None, confidence=0.2),
+        incoterms=ExtractedField(value="CIF", confidence=0.98),
+        description_of_goods=ExtractedField(value="Laptops", confidence=0.9),
+        gross_weight=ExtractedField(value="100 KG", confidence=0.9),
     )
 
     result = validate_extraction(
@@ -23,30 +28,12 @@ def test_validator_marks_match_mismatch_uncertain_and_no_rule() -> None:
             "incoterms": "FOB",
             "port_of_discharge": "Los Angeles, US",
         },
-        confidence_threshold=0.75,
     )
 
-    statuses = {item.field: item.status.value for item in result.items}
-    assert statuses == {
-        "consignee_name": "match",
-        "incoterms": "mismatch",
-        "port_of_discharge": "uncertain",
-        "invoice_number": "no_rule",
-    }
-    assert result.matched_count == 1
-    assert result.mismatched_count == 1
-    assert result.uncertain_count == 1
-    assert result.no_rule_count == 1
-
-
-def test_validator_marks_missing_rule_field_uncertain() -> None:
-    result = validate_extraction(
-        ExtractionResult(fields=[]),
-        {"hs_code": "8471.30"},
-        confidence_threshold=0.75,
-    )
-
-    assert len(result.items) == 1
-    assert result.items[0].field == "hs_code"
-    assert result.items[0].status.value == "uncertain"
-
+    statuses = {item.field_name: item.status for item in result.results}
+    assert statuses["consignee_name"] == "match"
+    assert statuses["incoterms"] == "mismatch"
+    assert statuses["port_of_discharge"] == "uncertain"
+    assert statuses["invoice_number"] == "match"
+    assert result.has_mismatches is True
+    assert result.has_uncertain is True
