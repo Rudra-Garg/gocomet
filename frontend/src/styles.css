@@ -339,6 +339,33 @@ small {
   overflow-x: auto;
 }
 
+.query-run-row {
+  cursor: pointer;
+}
+
+.query-run-row:hover,
+.query-run-row:focus {
+  background: #eef4f1;
+  outline: none;
+}
+
+.query-run-row.active {
+  background: #e2eee9;
+}
+
+.query-run-link {
+  background: transparent;
+  color: #245c4f;
+  display: inline;
+  font-weight: 800;
+  justify-content: start;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 pre {
   background: #17201d;
   border-radius: 6px;

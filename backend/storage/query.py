@@ -23,6 +23,8 @@ SELECT * FROM pipeline_runs WHERE customer_id = 'acme' AND action = 'flag_review
 
 "what fields failed most often?" ->
 SELECT field_name, COUNT(*) as failures FROM validation_results WHERE status = 'mismatch' GROUP BY field_name ORDER BY failures DESC
+
+When returning run records, include run_id in the selected columns so the UI can open run details.
 """.strip()
 
 

@@ -54,6 +54,16 @@ export default function App() {
     }
   }
 
+  async function selectRun(runId) {
+    setError("");
+    setActiveRunId(runId);
+    try {
+      setRunData(await fetchJson(`${API_BASE}/api/pipeline/${runId}`));
+    } catch (selectError) {
+      setError(selectError.message);
+    }
+  }
+
   async function handleUpload({ file, customerId }) {
     setError("");
     setIsSubmitting(true);
@@ -99,10 +109,7 @@ export default function App() {
                 <button
                   className={run.run_id === activeRunId ? "run active" : "run"}
                   key={run.run_id}
-                  onClick={() => {
-                    setActiveRunId(run.run_id);
-                    fetchJson(`${API_BASE}/api/pipeline/${run.run_id}`).then(setRunData);
-                  }}
+                  onClick={() => void selectRun(run.run_id)}
                 >
                   <span>{run.customer_id}</span>
                   <strong>{run.action || run.error || "processing"}</strong>
@@ -117,7 +124,7 @@ export default function App() {
           <RouterDecision decision={runData?.decision} error={runData?.error} />
           <ExtractionView fields={runData?.extraction || []} />
           <ValidationView results={runData?.validation || []} />
-          <QueryPanel apiBase={API_BASE} />
+          <QueryPanel apiBase={API_BASE} activeRunId={activeRunId} onRunSelect={selectRun} />
         </section>
       </section>
     </main>
