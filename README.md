@@ -11,9 +11,7 @@ This repository contains a local document validation pipeline with a FastAPI bac
 ## Backend setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 cp .env.example .env
 ```
 
@@ -22,7 +20,7 @@ Set `GEMINI_API_KEY` in `.env`. The default model is `gemini-3.1-flash-lite`.
 Run the backend:
 
 ```bash
-uvicorn backend.main:app --reload
+uv run uvicorn backend.main:app --reload
 ```
 
 The API runs at `http://localhost:8000`.
@@ -77,3 +75,10 @@ Example response shape:
 }
 ```
 
+## Tests
+
+```bash
+uv run pytest
+```
+
+The tests cover deterministic validation, router action precedence, SQLite table initialization, natural-language SQL safety checks, and the `/api/runs` route.
