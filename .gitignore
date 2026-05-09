@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.agents/
+.codex/
+.venv/
+.python_deps/
+.env
+node_modules/
+dist/
+trade_validation.db
+trade_validation_checkpoints.db
+*.sqlite
+*.sqlite3
