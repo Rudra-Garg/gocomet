@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.pipeline.state import PipelineState
@@ -83,7 +83,7 @@ def save_pipeline_run(state: PipelineState, db_path: str) -> None:
                     state.decision.action.value if state.decision else None,
                     state.error,
                     state.created_at.isoformat(),
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                 ),
             )
 
@@ -231,4 +231,3 @@ def _fetch_all(
     params: tuple,
 ) -> list[dict]:
     return [dict(row) for row in connection.execute(sql, params).fetchall()]
-

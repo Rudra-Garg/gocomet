@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 
 from backend.agents.extractor import extract_document
 from backend.agents.router import decide_route
@@ -69,11 +69,11 @@ def _guarded(fn):
             return state
         try:
             next_state = fn(state)
-            next_state.updated_at = datetime.utcnow()
+            next_state.updated_at = datetime.now(UTC)
             return next_state
         except Exception as exc:
             state.error = str(exc)
-            state.updated_at = datetime.utcnow()
+            state.updated_at = datetime.now(UTC)
             return state
 
     return wrapped
