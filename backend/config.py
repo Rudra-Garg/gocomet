@@ -10,12 +10,12 @@ class Settings:
     gemini_model: str = "gemini-3.1-flash-lite"
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
-    langfuse_host: str | None = None
+    langfuse_host: str = "https://cloud.langfuse.com"
     db_path: str = "trade_validation.db"
     checkpoint_db_path: str = "trade_validation_checkpoints.db"
-    extraction_retry_cap: int = 3
-    confidence_threshold: float = 0.75
-    token_budget: int = 4096
+    max_retries: int = 3
+    confidence_threshold: float = 0.5
+    max_tokens_per_run: int = 10000
 
 
 def get_settings(require_gemini: bool = True) -> Settings:
@@ -28,14 +28,13 @@ def get_settings(require_gemini: bool = True) -> Settings:
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
         langfuse_public_key=os.getenv("LANGFUSE_PUBLIC_KEY") or None,
         langfuse_secret_key=os.getenv("LANGFUSE_SECRET_KEY") or None,
-        langfuse_host=os.getenv("LANGFUSE_HOST") or None,
+        langfuse_host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
         db_path=os.getenv("DB_PATH", "trade_validation.db"),
         checkpoint_db_path=os.getenv(
             "CHECKPOINT_DB_PATH",
             "trade_validation_checkpoints.db",
         ),
-        extraction_retry_cap=int(os.getenv("EXTRACTION_RETRY_CAP", "3")),
-        confidence_threshold=float(os.getenv("CONFIDENCE_THRESHOLD", "0.75")),
-        token_budget=int(os.getenv("TOKEN_BUDGET", "4096")),
+        max_retries=int(os.getenv("MAX_RETRIES", "3")),
+        confidence_threshold=float(os.getenv("CONFIDENCE_THRESHOLD", "0.5")),
+        max_tokens_per_run=int(os.getenv("MAX_TOKENS_PER_RUN", "10000")),
     )
-

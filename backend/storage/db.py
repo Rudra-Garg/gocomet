@@ -3,10 +3,20 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterable
-from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.pipeline.state import PipelineState
+
+EXTRACTION_FIELD_NAMES = [
+    "invoice_number",
+    "consignee_name",
+    "hs_code",
+    "port_of_loading",
+    "port_of_discharge",
+    "incoterms",
+    "description_of_goods",
+    "gross_weight",
+]
 
 
 def connect(db_path: str) -> sqlite3.Connection:
@@ -21,41 +31,39 @@ def init_db(db_path: str) -> None:
             """
             CREATE TABLE IF NOT EXISTS pipeline_runs (
                 run_id TEXT PRIMARY KEY,
-                customer_id TEXT NOT NULL,
+                customer_id TEXT,
+                document_name TEXT,
                 action TEXT,
-                error TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                has_mismatches INTEGER,
+                has_uncertain INTEGER,
+                created_at TEXT DEFAULT (datetime('now'))
             );
 
-            CREATE TABLE IF NOT EXISTS extracted_fields (
+            CREATE TABLE IF NOT EXISTS extraction_fields (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id TEXT NOT NULL,
-                name TEXT NOT NULL,
+                run_id TEXT,
+                field_name TEXT,
                 value TEXT,
-                confidence REAL NOT NULL,
-                source_text TEXT,
-                FOREIGN KEY (run_id) REFERENCES pipeline_runs(run_id)
+                confidence REAL,
+                uncertain INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS validation_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id TEXT NOT NULL,
-                field TEXT NOT NULL,
+                run_id TEXT,
+                field_name TEXT,
+                status TEXT,
+                found TEXT,
                 expected TEXT,
-                actual TEXT,
-                status TEXT NOT NULL,
-                confidence REAL NOT NULL,
-                message TEXT NOT NULL,
-                FOREIGN KEY (run_id) REFERENCES pipeline_runs(run_id)
+                rule_ref TEXT
             );
 
             CREATE TABLE IF NOT EXISTS router_decisions (
                 run_id TEXT PRIMARY KEY,
-                action TEXT NOT NULL,
-                reasoning TEXT NOT NULL,
+                action TEXT,
+                reasoning TEXT,
                 amendment_email TEXT,
-                FOREIGN KEY (run_id) REFERENCES pipeline_runs(run_id)
+                created_at TEXT DEFAULT (datetime('now'))
             );
             """,
         )
@@ -63,80 +71,92 @@ def init_db(db_path: str) -> None:
 
 def save_pipeline_run(state: PipelineState, db_path: str) -> None:
     init_db(db_path)
+    extraction = state.get("extraction")
+    validation = state.get("validation")
+    decision = state.get("decision")
+    metadata = state.get("metadata", {})  # type: ignore[typeddict-item]
+
     with connect(db_path) as connection:
         with connection:
             connection.execute(
                 """
                 INSERT INTO pipeline_runs (
-                    run_id, customer_id, action, error, created_at, updated_at
+                    run_id, customer_id, document_name, action,
+                    has_mismatches, has_uncertain
                 )
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     customer_id = excluded.customer_id,
+                    document_name = excluded.document_name,
                     action = excluded.action,
-                    error = excluded.error,
-                    updated_at = excluded.updated_at
+                    has_mismatches = excluded.has_mismatches,
+                    has_uncertain = excluded.has_uncertain
                 """,
                 (
-                    state.run_id,
-                    state.customer_id,
-                    state.decision.action.value if state.decision else None,
-                    state.error,
-                    state.created_at.isoformat(),
-                    datetime.now(UTC).isoformat(),
+                    state["run_id"],
+                    state["customer_id"],
+                    metadata.get("document_name"),
+                    decision.action if decision else None,
+                    int(validation.has_mismatches) if validation else None,
+                    int(validation.has_uncertain) if validation else None,
                 ),
             )
 
-            connection.execute("DELETE FROM extracted_fields WHERE run_id = ?", (state.run_id,))
+            connection.execute(
+                "DELETE FROM extraction_fields WHERE run_id = ?",
+                (state["run_id"],),
+            )
             connection.execute(
                 "DELETE FROM validation_results WHERE run_id = ?",
-                (state.run_id,),
+                (state["run_id"],),
             )
-            connection.execute("DELETE FROM router_decisions WHERE run_id = ?", (state.run_id,))
+            connection.execute(
+                "DELETE FROM router_decisions WHERE run_id = ?",
+                (state["run_id"],),
+            )
 
-            if state.extraction:
+            if extraction:
                 connection.executemany(
                     """
-                    INSERT INTO extracted_fields (
-                        run_id, name, value, confidence, source_text
+                    INSERT INTO extraction_fields (
+                        run_id, field_name, value, confidence, uncertain
                     )
                     VALUES (?, ?, ?, ?, ?)
                     """,
                     [
                         (
-                            state.run_id,
-                            field.name,
-                            field.value,
-                            field.confidence,
-                            field.source_text,
+                            state["run_id"],
+                            field_name,
+                            getattr(extraction, field_name).value,
+                            getattr(extraction, field_name).confidence,
+                            int(getattr(extraction, field_name).uncertain),
                         )
-                        for field in state.extraction.fields
+                        for field_name in EXTRACTION_FIELD_NAMES
                     ],
                 )
 
-            if state.validation:
+            if validation:
                 connection.executemany(
                     """
                     INSERT INTO validation_results (
-                        run_id, field, expected, actual, status, confidence, message
+                        run_id, field_name, status, found, expected, rule_ref
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
-                            state.run_id,
-                            item.field,
+                            state["run_id"],
+                            item.field_name,
+                            item.status,
+                            item.found,
                             item.expected,
-                            item.actual,
-                            item.status.value,
-                            item.confidence,
-                            item.message,
+                            item.rule_ref,
                         )
-                        for item in state.validation.items
+                        for item in validation.results
                     ],
                 )
 
-            if state.decision:
+            if decision:
                 connection.execute(
                     """
                     INSERT INTO router_decisions (
@@ -145,10 +165,10 @@ def save_pipeline_run(state: PipelineState, db_path: str) -> None:
                     VALUES (?, ?, ?, ?)
                     """,
                     (
-                        state.run_id,
-                        state.decision.action.value,
-                        state.decision.reasoning,
-                        state.decision.amendment_email,
+                        state["run_id"],
+                        decision.action,
+                        decision.reasoning,
+                        decision.amendment_email,
                     ),
                 )
 
@@ -163,17 +183,23 @@ def get_run(run_id: str, db_path: str) -> dict | None:
         if run is None:
             return None
 
-        extracted = _fetch_all(
+        extraction = _fetch_all(
             connection,
-            "SELECT name, value, confidence, source_text FROM extracted_fields WHERE run_id = ?",
+            """
+            SELECT field_name, value, confidence, uncertain
+            FROM extraction_fields
+            WHERE run_id = ?
+            ORDER BY id
+            """,
             (run_id,),
         )
         validation = _fetch_all(
             connection,
             """
-            SELECT field, expected, actual, status, confidence, message
+            SELECT field_name, status, found, expected, rule_ref
             FROM validation_results
             WHERE run_id = ?
+            ORDER BY id
             """,
             (run_id,),
         )
@@ -189,29 +215,48 @@ def get_run(run_id: str, db_path: str) -> dict | None:
     return {
         "run_id": run["run_id"],
         "customer_id": run["customer_id"],
+        "document_name": run["document_name"],
         "action": run["action"],
-        "error": run["error"],
+        "has_mismatches": bool(run["has_mismatches"])
+        if run["has_mismatches"] is not None
+        else None,
+        "has_uncertain": bool(run["has_uncertain"])
+        if run["has_uncertain"] is not None
+        else None,
         "created_at": run["created_at"],
-        "updated_at": run["updated_at"],
-        "extraction": {"fields": extracted},
-        "validation": {"items": validation},
+        "error": None,
+        "extraction": [_row_with_bool(row, "uncertain") for row in extraction],
+        "validation": validation,
         "decision": dict(decision) if decision else None,
     }
 
 
-def list_runs(db_path: str) -> list[dict]:
+def list_runs(db_path: str, limit: int = 20) -> list[dict]:
     init_db(db_path)
     with connect(db_path) as connection:
-        return _fetch_all(
+        rows = _fetch_all(
             connection,
             """
-            SELECT run_id, customer_id, action, error, created_at, updated_at
+            SELECT run_id, customer_id, document_name, action,
+                   has_mismatches, has_uncertain, created_at
             FROM pipeline_runs
             ORDER BY created_at DESC
-            LIMIT 100
+            LIMIT ?
             """,
-            (),
+            (limit,),
         )
+    return [
+        {
+            **row,
+            "has_mismatches": bool(row["has_mismatches"])
+            if row["has_mismatches"] is not None
+            else None,
+            "has_uncertain": bool(row["has_uncertain"])
+            if row["has_uncertain"] is not None
+            else None,
+        }
+        for row in rows
+    ]
 
 
 def export_rows(rows: Iterable[sqlite3.Row]) -> list[dict]:
@@ -231,3 +276,7 @@ def _fetch_all(
     params: tuple,
 ) -> list[dict]:
     return [dict(row) for row in connection.execute(sql, params).fetchall()]
+
+
+def _row_with_bool(row: dict, key: str) -> dict:
+    return {**row, key: bool(row[key])}

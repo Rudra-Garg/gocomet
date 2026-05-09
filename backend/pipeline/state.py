@@ -1,75 +1,63 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import Enum
-from typing import Any
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
-
-
-class RouterAction(str, Enum):
-    AUTO_APPROVE = "auto_approve"
-    DRAFT_AMENDMENT = "draft_amendment"
-    FLAG_REVIEW = "flag_review"
-
-
-class ValidationStatus(str, Enum):
-    MATCH = "match"
-    MISMATCH = "mismatch"
-    UNCERTAIN = "uncertain"
-    NO_RULE = "no_rule"
-
-
-class DocumentInput(BaseModel):
-    filename: str
-    content_type: str
-    content_base64: str
-    customer_id: str
+from pydantic import BaseModel, model_validator
+from typing_extensions import TypedDict
 
 
 class ExtractedField(BaseModel):
-    name: str
-    value: str | None = None
-    confidence: float = Field(ge=0, le=1)
-    source_text: str | None = None
+    value: Optional[str] = None
+    confidence: float
+    uncertain: bool = False
+
+    @model_validator(mode="after")
+    def flag_uncertain(self):
+        if self.confidence < 0.5:
+            self.uncertain = True
+        return self
 
 
-class ExtractionResult(BaseModel):
-    fields: list[ExtractedField]
-    summary: str | None = None
-
-
-class ValidationItem(BaseModel):
-    field: str
-    expected: str | None = None
-    actual: str | None = None
-    status: ValidationStatus
-    confidence: float = Field(ge=0, le=1)
-    message: str
-
-
-class ValidationResult(BaseModel):
-    items: list[ValidationItem]
-    matched_count: int = 0
-    mismatched_count: int = 0
-    uncertain_count: int = 0
-    no_rule_count: int = 0
-
-
-class RouterDecision(BaseModel):
-    action: RouterAction
-    reasoning: str
-    amendment_email: str | None = None
-
-
-class PipelineState(BaseModel):
+class ExtractionOutput(BaseModel):
     run_id: str
+    invoice_number: ExtractedField
+    consignee_name: ExtractedField
+    hs_code: ExtractedField
+    port_of_loading: ExtractedField
+    port_of_discharge: ExtractedField
+    incoterms: ExtractedField
+    description_of_goods: ExtractedField
+    gross_weight: ExtractedField
+
+
+class FieldValidationResult(BaseModel):
+    field_name: str
+    status: Literal["match", "mismatch", "uncertain"]
+    found: Optional[str] = None
+    expected: Optional[str] = None
+    rule_ref: Optional[str] = None
+
+
+class ValidationOutput(BaseModel):
+    run_id: str
+    results: list[FieldValidationResult]
+    has_mismatches: bool
+    has_uncertain: bool
+
+
+class RouterOutput(BaseModel):
+    run_id: str
+    action: Literal["auto_approve", "flag_review", "draft_amendment"]
+    reasoning: str
+    amendment_email: Optional[str] = None
+
+
+class PipelineState(TypedDict):
+    run_id: str
+    document_bytes: bytes
+    document_mime: str
     customer_id: str
-    document: DocumentInput | None = None
-    extraction: ExtractionResult | None = None
-    validation: ValidationResult | None = None
-    decision: RouterDecision | None = None
-    error: str | None = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    extraction: Optional[ExtractionOutput]
+    validation: Optional[ValidationOutput]
+    decision: Optional[RouterOutput]
+    error: Optional[str]
