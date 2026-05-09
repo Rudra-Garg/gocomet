@@ -10,5 +10,7 @@ node_modules/
 dist/
 trade_validation.db
 trade_validation_checkpoints.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
