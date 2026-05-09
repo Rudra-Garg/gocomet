@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from backend.config import get_settings
+from backend.observability import flush_langfuse, trace_span
 from backend.pipeline.graph import run_pipeline
 from backend.pipeline.state import PipelineState
 from backend.storage.db import get_run, list_runs, save_pipeline_run
@@ -36,14 +37,33 @@ async def start_pipeline(
         decision=None,
         error=None,
     )
-    result = run_pipeline(state, settings)
-    result["metadata"] = {"document_name": file.filename or "document"}  # type: ignore[typeddict-unknown-key]
-    save_pipeline_run(result, settings.db_path)
-    return {
-        "run_id": run_id,
-        "status": "error" if result.get("error") else "complete",
-        "error": result.get("error"),
-    }
+    try:
+        with trace_span(
+            settings,
+            name="trade-document-pipeline",
+            input={
+                "customer_id": customer_id,
+                "document_name": file.filename or "document",
+                "document_mime": state["document_mime"],
+                "document_size_bytes": len(content),
+            },
+            session_id=run_id,
+            metadata={"run_id": run_id, "customer_id": customer_id},
+            tags=["feature:pipeline", f"customer:{customer_id}"],
+        ) as span:
+            result = run_pipeline(state, settings)
+            result["metadata"] = {"document_name": file.filename or "document"}  # type: ignore[typeddict-unknown-key]
+            save_pipeline_run(result, settings.db_path)
+            response = {
+                "run_id": run_id,
+                "status": "error" if result.get("error") else "complete",
+                "error": result.get("error"),
+            }
+            if span is not None:
+                span.update(output=response)
+            return response
+    finally:
+        flush_langfuse(settings)
 
 
 @router.get("/pipeline/{run_id}")
@@ -58,7 +78,10 @@ def pipeline_run(run_id: str) -> dict:
 @router.post("/query")
 def query(request: QueryRequest) -> dict:
     settings = get_settings()
-    return run_nl_query(request.question, settings)
+    try:
+        return run_nl_query(request.question, settings)
+    finally:
+        flush_langfuse(settings)
 
 
 @router.get("/runs")

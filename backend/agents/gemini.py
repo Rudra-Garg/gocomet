@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from functools import wraps
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any
 
 from backend.config import Settings
-
-F = TypeVar("F", bound=Callable[..., Any])
+from backend.observability import get_langfuse_client
 
 
 def _client(settings: Settings):
@@ -17,40 +16,6 @@ def _client(settings: Settings):
             "google-genai is required for Gemini calls. Run `uv sync`.",
         ) from exc
     return genai.Client(api_key=settings.gemini_api_key)
-
-
-def observe_llm_call(name: str) -> Callable[[F], F]:
-    try:
-        from langfuse import observe
-    except ImportError:
-        observe = None
-
-    def decorator(func: F) -> F:
-        observed = observe(name=name)(func) if observe else func
-
-        @wraps(func)
-        def wrapped(*args: Any, **kwargs: Any) -> Any:
-            _tag_observation(kwargs.get("run_id"), kwargs.get("agent"))
-            return observed(*args, **kwargs)
-
-        return wrapped  # type: ignore[return-value]
-
-    return decorator
-
-
-def _tag_observation(run_id: str | None, agent: str | None) -> None:
-    if not run_id or not agent:
-        return
-    try:
-        from langfuse import get_client
-
-        get_client().update_current_trace(
-            session_id=run_id,
-            tags=[f"run_id:{run_id}", f"agent:{agent}"],
-            metadata={"run_id": run_id, "agent": agent},
-        )
-    except Exception:
-        return
 
 
 def generate_text(
@@ -84,7 +49,6 @@ def generate_text_with_document(
     )
 
 
-@observe_llm_call("gemini_text")
 def _generate_text(
     settings: Settings,
     prompt: str,
@@ -92,17 +56,19 @@ def _generate_text(
     run_id: str | None,
     agent: str | None,
 ) -> str:
-    response = _client(settings).models.generate_content(
-        model=settings.gemini_model,
-        contents=prompt,
+    return _with_generation_trace(
+        settings,
+        name="gemini_text",
+        prompt=prompt,
+        run_id=run_id,
+        agent=agent,
+        call=lambda: _client(settings).models.generate_content(
+            model=settings.gemini_model,
+            contents=prompt,
+        ),
     )
-    text = getattr(response, "text", None)
-    if not text:
-        raise RuntimeError("Gemini returned an empty response")
-    return text.strip()
 
 
-@observe_llm_call("gemini_document")
 def _generate_text_with_document(
     settings: Settings,
     prompt: str,
@@ -123,14 +89,102 @@ def _generate_text_with_document(
         prompt,
         types.Part.from_bytes(data=document_bytes, mime_type=document_mime),
     ]
-    response = _client(settings).models.generate_content(
-        model=settings.gemini_model,
-        contents=parts,
+    return _with_generation_trace(
+        settings,
+        name="gemini_document",
+        prompt=prompt,
+        run_id=run_id,
+        agent=agent,
+        document={"mime_type": document_mime, "size_bytes": len(document_bytes)},
+        call=lambda: _client(settings).models.generate_content(
+            model=settings.gemini_model,
+            contents=parts,
+        ),
     )
+
+
+def _with_generation_trace(
+    settings: Settings,
+    *,
+    name: str,
+    prompt: str,
+    run_id: str | None,
+    agent: str | None,
+    call: Callable[[], Any],
+    document: dict[str, Any] | None = None,
+) -> str:
+    client = get_langfuse_client(settings)
+    generation_context = (
+        client.start_as_current_observation(
+            as_type="generation",
+            name=name,
+            model=settings.gemini_model,
+            input=_generation_input(prompt, agent, document),
+        )
+        if client is not None
+        else None
+    )
+    if generation_context is None:
+        response = call()
+        return _response_text(response)
+
+    with generation_context as generation:
+        response = call()
+        text = _response_text(response)
+        generation.update(
+            output=text,
+            usage_details=_usage_details(response),
+            metadata=_generation_metadata(run_id, agent, document),
+        )
+        return text
+
+
+def _generation_input(
+    prompt: str,
+    agent: str | None,
+    document: dict[str, Any] | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"prompt": prompt}
+    if agent:
+        payload["agent"] = agent
+    if document:
+        payload["document"] = document
+    return payload
+
+
+def _generation_metadata(
+    run_id: str | None,
+    agent: str | None,
+    document: dict[str, Any] | None,
+) -> dict[str, str]:
+    metadata = {"provider": "google-genai"}
+    if run_id:
+        metadata["run_id"] = run_id
+    if agent:
+        metadata["agent"] = agent
+    if document:
+        metadata["document_mime"] = str(document.get("mime_type"))
+        metadata["document_size_bytes"] = str(document.get("size_bytes"))
+    return metadata
+
+
+def _response_text(response: Any) -> str:
     text = getattr(response, "text", None)
     if not text:
         raise RuntimeError("Gemini returned an empty response")
     return text.strip()
+
+
+def _usage_details(response: Any) -> dict[str, int]:
+    usage = getattr(response, "usage_metadata", None)
+    if usage is None:
+        return {}
+    details = {
+        "input_tokens": getattr(usage, "prompt_token_count", None),
+        "output_tokens": getattr(usage, "candidates_token_count", None),
+        "total_tokens": getattr(usage, "total_token_count", None),
+    }
+    return {key: value for key, value in details.items() if isinstance(value, int)}
 
 
 def _enforce_token_budget(settings: Settings, content: Sequence[str | bytes]) -> None:

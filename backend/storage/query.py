@@ -4,6 +4,7 @@ import re
 
 from backend.agents.gemini import generate_text
 from backend.config import Settings
+from backend.observability import trace_span
 from backend.storage.db import connect, init_db
 
 SCHEMA_PROMPT = """
@@ -30,20 +31,30 @@ When returning run records, include run_id in the selected columns so the UI can
 
 def run_nl_query(question: str, settings: Settings) -> dict:
     init_db(settings.db_path)
-    prompt = f"""
+    with trace_span(
+        settings,
+        name="natural-language-sql-query",
+        input={"question": question},
+        metadata={"feature": "nl-query"},
+        tags=["feature:nl-query"],
+    ) as span:
+        prompt = f"""
 {SCHEMA_PROMPT}
 
 Given this schema and examples, write a single SELECT SQL query for: {question}. Return ONLY the SQL, nothing else.
 """.strip()
-    sql = _strip_fences(generate_text(settings, prompt, agent="query")).strip()
-    _validate_select_sql(sql)
-    sql = sql.rstrip(";").strip()
+        sql = _strip_fences(generate_text(settings, prompt, agent="query")).strip()
+        _validate_select_sql(sql)
+        sql = sql.rstrip(";").strip()
 
-    with connect(settings.db_path) as connection:
-        cursor = connection.execute(sql)
-        rows = cursor.fetchall()
-        columns = [description[0] for description in cursor.description or []]
-    return {"sql": sql, "columns": columns, "rows": [list(row) for row in rows]}
+        with connect(settings.db_path) as connection:
+            cursor = connection.execute(sql)
+            rows = cursor.fetchall()
+            columns = [description[0] for description in cursor.description or []]
+        result = {"sql": sql, "columns": columns, "rows": [list(row) for row in rows]}
+        if span is not None:
+            span.update(output={"sql": sql, "row_count": len(rows)})
+        return result
 
 
 def _validate_select_sql(sql: str) -> None:

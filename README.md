@@ -39,6 +39,16 @@ cp .env.example .env
 
 Set `GEMINI_API_KEY` in `.env`. The default model is `gemini-3.1-flash-lite`. Langfuse keys are optional; local runs work without them.
 
+For Langfuse tracing, set:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+```
+
+`LANGFUSE_HOST` is still accepted for older local environment files, but `LANGFUSE_BASE_URL` is preferred. Pipeline runs are traced as `trade-document-pipeline` with nested extraction, validation, routing, storage, and Gemini generation observations. Natural-language SQL questions are traced as `natural-language-sql-query`.
+
 Run the backend:
 
 ```bash

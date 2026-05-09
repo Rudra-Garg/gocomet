@@ -17,7 +17,7 @@ class Settings:
     gemini_model: str = "gemini-3.1-flash-lite"
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
-    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_base_url: str = "https://cloud.langfuse.com"
     db_path: str = "trade_validation.db"
     checkpoint_db_path: str = "trade_validation_checkpoints.db"
     max_retries: int = 3
@@ -35,7 +35,10 @@ def get_settings(require_gemini: bool = True) -> Settings:
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
         langfuse_public_key=os.getenv("LANGFUSE_PUBLIC_KEY") or None,
         langfuse_secret_key=os.getenv("LANGFUSE_SECRET_KEY") or None,
-        langfuse_host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        langfuse_base_url=os.getenv(
+            "LANGFUSE_BASE_URL",
+            os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        ),
         db_path=os.getenv("DB_PATH", "trade_validation.db"),
         checkpoint_db_path=os.getenv(
             "CHECKPOINT_DB_PATH",
