@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.routes import router
 from backend.config import get_settings
 from backend.storage.db import init_db
+from backend.trigger.imap_watcher import start_imap_watcher
 
 
 app = FastAPI(title="Trade Document Validation API")
@@ -25,4 +26,4 @@ app.include_router(router)
 def startup() -> None:
     settings = get_settings(require_gemini=False)
     init_db(settings.db_path)
-
+    start_imap_watcher(settings)

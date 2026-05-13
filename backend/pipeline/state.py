@@ -58,6 +58,7 @@ class PipelineState(TypedDict):
     document_mime: str
     customer_id: str
     extraction: Optional[ExtractionOutput]
+    document_extractions: Optional[list[dict]]
     validation: Optional[ValidationOutput]
     decision: Optional[RouterOutput]
     error: Optional[str]

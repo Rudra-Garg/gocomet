@@ -23,6 +23,17 @@ class Settings:
     max_retries: int = 3
     confidence_threshold: float = 0.5
     max_tokens_per_run: int = 10000
+    imap_host: str | None = None
+    imap_port: int = 993
+    imap_username: str | None = None
+    imap_password: str | None = None
+    imap_mailbox: str = "INBOX"
+    imap_poll_seconds: int = 60
+    smtp_host: str | None = None
+    smtp_port: int = 465
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
 
 
 def get_settings(require_gemini: bool = True) -> Settings:
@@ -47,4 +58,15 @@ def get_settings(require_gemini: bool = True) -> Settings:
         max_retries=int(os.getenv("MAX_RETRIES", "3")),
         confidence_threshold=float(os.getenv("CONFIDENCE_THRESHOLD", "0.5")),
         max_tokens_per_run=int(os.getenv("MAX_TOKENS_PER_RUN", "10000")),
+        imap_host=os.getenv("IMAP_HOST") or None,
+        imap_port=int(os.getenv("IMAP_PORT", "993")),
+        imap_username=os.getenv("IMAP_USERNAME") or None,
+        imap_password=os.getenv("IMAP_PASSWORD") or None,
+        imap_mailbox=os.getenv("IMAP_MAILBOX", "INBOX"),
+        imap_poll_seconds=int(os.getenv("IMAP_POLL_SECONDS", "60")),
+        smtp_host=os.getenv("SMTP_HOST") or None,
+        smtp_port=int(os.getenv("SMTP_PORT", "465")),
+        smtp_username=os.getenv("SMTP_USERNAME") or None,
+        smtp_password=os.getenv("SMTP_PASSWORD") or None,
+        smtp_from=os.getenv("SMTP_FROM") or None,
     )

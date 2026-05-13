@@ -4,7 +4,9 @@ import json
 import sqlite3
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
+from backend.agents.cross_validator import CrossValidationResult
 from backend.pipeline.state import PipelineState
 
 EXTRACTION_FIELD_NAMES = [
@@ -48,6 +50,17 @@ def init_db(db_path: str) -> None:
                 uncertain INTEGER
             );
 
+            CREATE TABLE IF NOT EXISTS document_extraction_fields (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT,
+                attachment_index INTEGER,
+                filename TEXT,
+                field_name TEXT,
+                value TEXT,
+                confidence REAL,
+                uncertain INTEGER
+            );
+
             CREATE TABLE IF NOT EXISTS validation_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id TEXT,
@@ -64,6 +77,42 @@ def init_db(db_path: str) -> None:
                 reasoning TEXT,
                 amendment_email TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS cross_validation_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT,
+                field_name TEXT,
+                status TEXT,
+                values_json TEXT,
+                message TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS shipment_emails (
+                run_id TEXT PRIMARY KEY,
+                sender TEXT,
+                reply_to TEXT,
+                subject TEXT,
+                message_id TEXT,
+                received_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS shipment_replies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT,
+                sent_to TEXT,
+                subject TEXT,
+                body TEXT,
+                sent_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS shipment_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT,
+                attachment_index INTEGER,
+                filename TEXT,
+                mime TEXT,
+                size INTEGER
             );
             """,
         )
@@ -134,6 +183,10 @@ def save_pipeline_run(state: PipelineState, db_path: str) -> None:
                         for field_name in EXTRACTION_FIELD_NAMES
                     ],
                 )
+
+            document_extractions = state.get("document_extractions")
+            if document_extractions is not None:
+                _write_document_extractions(connection, state["run_id"], document_extractions)
 
             if validation:
                 connection.executemany(
@@ -211,6 +264,36 @@ def get_run(run_id: str, db_path: str) -> dict | None:
             """,
             (run_id,),
         ).fetchone()
+        cross_validation = _fetch_all(
+            connection,
+            """
+            SELECT field_name, status, values_json, message
+            FROM cross_validation_results
+            WHERE run_id = ?
+            ORDER BY id
+            """,
+            (run_id,),
+        )
+        documents = _fetch_all(
+            connection,
+            """
+            SELECT attachment_index, filename, mime, size
+            FROM shipment_documents
+            WHERE run_id = ?
+            ORDER BY attachment_index
+            """,
+            (run_id,),
+        )
+        document_extractions = _fetch_all(
+            connection,
+            """
+            SELECT attachment_index, filename, field_name, value, confidence, uncertain
+            FROM document_extraction_fields
+            WHERE run_id = ?
+            ORDER BY attachment_index, id
+            """,
+            (run_id,),
+        )
 
     return {
         "run_id": run["run_id"],
@@ -228,7 +311,168 @@ def get_run(run_id: str, db_path: str) -> dict | None:
         "extraction": [_row_with_bool(row, "uncertain") for row in extraction],
         "validation": validation,
         "decision": dict(decision) if decision else None,
+        "cross_validation": [
+            {
+                **row,
+                "values": json.loads(row["values_json"]) if row["values_json"] else {},
+            }
+            for row in cross_validation
+        ],
+        "document_extractions": _group_document_extractions(document_extractions),
+        "documents": documents,
     }
+
+
+def save_document_extractions(
+    run_id: str,
+    document_extractions: list[dict],
+    db_path: str,
+) -> None:
+    init_db(db_path)
+    with connect(db_path) as connection:
+        with connection:
+            _write_document_extractions(connection, run_id, document_extractions)
+
+
+def save_shipment_cross_validation(
+    run_id: str,
+    cross_validation: CrossValidationResult,
+    db_path: str,
+) -> None:
+    init_db(db_path)
+    with connect(db_path) as connection:
+        with connection:
+            connection.execute(
+                "DELETE FROM cross_validation_results WHERE run_id = ?",
+                (run_id,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO cross_validation_results (
+                    run_id, field_name, status, values_json, message
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        run_id,
+                        item.field_name,
+                        item.status,
+                        json.dumps(item.values),
+                        item.message,
+                    )
+                    for item in cross_validation.results
+                ],
+            )
+
+
+def get_shipment_email(run_id: str, db_path: str) -> dict | None:
+    init_db(db_path)
+    with connect(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT sender, reply_to, subject, message_id, received_at
+            FROM shipment_emails
+            WHERE run_id = ?
+            """,
+            (run_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def save_shipment_email(run_id: str, metadata: dict[str, Any], db_path: str) -> None:
+    init_db(db_path)
+    with connect(db_path) as connection:
+        with connection:
+            connection.execute(
+                """
+                INSERT INTO shipment_emails (
+                    run_id, sender, reply_to, subject, message_id, received_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    sender = excluded.sender,
+                    reply_to = excluded.reply_to,
+                    subject = excluded.subject,
+                    message_id = excluded.message_id,
+                    received_at = excluded.received_at
+                """,
+                (
+                    run_id,
+                    metadata.get("sender"),
+                    metadata.get("reply_to"),
+                    metadata.get("subject"),
+                    metadata.get("message_id"),
+                    metadata.get("received_at"),
+                ),
+            )
+
+
+def save_shipment_reply(
+    run_id: str,
+    *,
+    sent_to: str,
+    subject: str,
+    body: str,
+    db_path: str,
+) -> None:
+    init_db(db_path)
+    with connect(db_path) as connection:
+        with connection:
+            connection.execute(
+                """
+                INSERT INTO shipment_replies (run_id, sent_to, subject, body)
+                VALUES (?, ?, ?, ?)
+                """,
+                (run_id, sent_to, subject, body),
+            )
+
+
+def list_shipment_replies(run_id: str, db_path: str) -> list[dict]:
+    init_db(db_path)
+    with connect(db_path) as connection:
+        return _fetch_all(
+            connection,
+            """
+            SELECT run_id, sent_to, subject, body, sent_at
+            FROM shipment_replies
+            WHERE run_id = ?
+            ORDER BY id
+            """,
+            (run_id,),
+        )
+
+
+def save_shipment_documents(
+    run_id: str,
+    documents: list[dict[str, Any]],
+    db_path: str,
+) -> None:
+    init_db(db_path)
+    with connect(db_path) as connection:
+        with connection:
+            connection.execute(
+                "DELETE FROM shipment_documents WHERE run_id = ?",
+                (run_id,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO shipment_documents (
+                    run_id, attachment_index, filename, mime, size
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        run_id,
+                        item["attachment_index"],
+                        item["filename"],
+                        item["mime"],
+                        item["size"],
+                    )
+                    for item in documents
+                ],
+            )
 
 
 def list_runs(db_path: str, limit: int = 20) -> list[dict]:
@@ -244,6 +488,35 @@ def list_runs(db_path: str, limit: int = 20) -> list[dict]:
             LIMIT ?
             """,
             (limit,),
+        )
+    return [
+        {
+            **row,
+            "has_mismatches": bool(row["has_mismatches"])
+            if row["has_mismatches"] is not None
+            else None,
+            "has_uncertain": bool(row["has_uncertain"])
+            if row["has_uncertain"] is not None
+            else None,
+        }
+        for row in rows
+    ]
+
+
+def list_inbox(db_path: str) -> list[dict]:
+    init_db(db_path)
+    with connect(db_path) as connection:
+        rows = _fetch_all(
+            connection,
+            """
+            SELECT e.run_id, e.sender, e.subject, e.received_at,
+                   r.customer_id, r.action, r.has_mismatches, r.has_uncertain
+            FROM shipment_emails e
+            LEFT JOIN pipeline_runs r ON e.run_id = r.run_id
+            ORDER BY e.received_at DESC
+            LIMIT 50
+            """,
+            (),
         )
     return [
         {
@@ -280,3 +553,57 @@ def _fetch_all(
 
 def _row_with_bool(row: dict, key: str) -> dict:
     return {**row, key: bool(row[key])}
+
+
+def _group_document_extractions(rows: list[dict]) -> list[dict]:
+    documents: dict[tuple[int, str], list[dict]] = {}
+    for row in rows:
+        key = (row["attachment_index"], row["filename"])
+        documents.setdefault(key, []).append(
+            {
+                "field_name": row["field_name"],
+                "value": row["value"],
+                "confidence": row["confidence"],
+                "uncertain": bool(row["uncertain"]),
+            },
+        )
+    return [
+        {
+            "attachment_index": attachment_index,
+            "filename": filename,
+            "fields": fields,
+        }
+        for (attachment_index, filename), fields in sorted(documents.items(), key=lambda item: item[0][0])
+    ]
+
+
+def _write_document_extractions(
+    connection: sqlite3.Connection,
+    run_id: str,
+    document_extractions: list[dict],
+) -> None:
+    connection.execute(
+        "DELETE FROM document_extraction_fields WHERE run_id = ?",
+        (run_id,),
+    )
+    connection.executemany(
+        """
+        INSERT INTO document_extraction_fields (
+            run_id, attachment_index, filename, field_name, value, confidence, uncertain
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                run_id,
+                item["attachment_index"],
+                item["filename"],
+                field_name,
+                getattr(item["extraction"], field_name).value,
+                getattr(item["extraction"], field_name).confidence,
+                int(getattr(item["extraction"], field_name).uncertain),
+            )
+            for item in document_extractions
+            for field_name in EXTRACTION_FIELD_NAMES
+        ],
+    )
