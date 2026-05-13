@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Sequence
 from collections.abc import Callable
 from typing import Any
 
 from backend.config import Settings
 from backend.observability import get_langfuse_client
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _client(settings: Settings):
@@ -125,11 +129,11 @@ def _with_generation_trace(
         else None
     )
     if generation_context is None:
-        response = call()
+        response = _call_with_retry(call, settings)
         return _response_text(response)
 
     with generation_context as generation:
-        response = call()
+        response = _call_with_retry(call, settings)
         text = _response_text(response)
         generation.update(
             output=text,
@@ -137,6 +141,40 @@ def _with_generation_trace(
             metadata=_generation_metadata(run_id, agent, document),
         )
         return text
+
+
+def _call_with_retry(call: Callable[[], Any], settings: Settings) -> Any:
+    last_error: Exception | None = None
+    attempts = max(1, settings.max_retries)
+    for attempt in range(attempts):
+        try:
+            return call()
+        except Exception as exc:
+            last_error = exc
+            if not _is_retryable_error(exc) or attempt == attempts - 1:
+                raise
+            delay = min(2**attempt, 8)
+            LOGGER.warning(
+                "Gemini call failed with retryable error; retrying in %ss (%s/%s)",
+                delay,
+                attempt + 1,
+                attempts,
+            )
+            time.sleep(delay)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Gemini call failed without raising an exception")
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    if status_code in {429, 500, 502, 503, 504}:
+        return True
+    status = getattr(exc, "status", None)
+    if status in {429, 500, 502, 503, 504}:
+        return True
+    message = str(exc).casefold()
+    return any(token in message for token in ("503", "unavailable", "rate limit", "timeout"))
 
 
 def _generation_input(
