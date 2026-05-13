@@ -71,6 +71,7 @@ def test_init_db_creates_required_tables_and_columns(tmp_path) -> None:
         "value",
         "confidence",
         "uncertain",
+        "source_snippet",
     ]
     assert columns["validation_results"] == [
         "id",
@@ -105,6 +106,7 @@ def test_init_db_creates_required_tables_and_columns(tmp_path) -> None:
         "value",
         "confidence",
         "uncertain",
+        "source_snippet",
     ]
 
 
@@ -117,7 +119,11 @@ def test_save_pipeline_run_persists_full_run(tmp_path) -> None:
         document_mime="application/pdf",
         extraction=ExtractionOutput(
             run_id="run-1",
-            invoice_number=ExtractedField(value="INV-1", confidence=0.97),
+            invoice_number=ExtractedField(
+                value="INV-1",
+                confidence=0.97,
+                source_snippet="Invoice No: INV-1",
+            ),
             consignee_name=ExtractedField(value="ACME Corporation", confidence=0.97),
             hs_code=ExtractedField(value="8471.30", confidence=0.97),
             port_of_loading=ExtractedField(value="Shanghai, CN", confidence=0.97),
@@ -156,6 +162,7 @@ def test_save_pipeline_run_persists_full_run(tmp_path) -> None:
     assert run["document_name"] == "invoice.pdf"
     assert run["action"] == "auto_approve"
     assert run["extraction"][0]["field_name"] == "invoice_number"
+    assert run["extraction"][0]["source_snippet"] == "Invoice No: INV-1"
     assert run["validation"][0]["status"] == "match"
     assert run["decision"]["reasoning"] == "All configured rules match."
     assert run["cross_validation"] == []
@@ -173,7 +180,11 @@ def test_save_pipeline_run_persists_document_extractions(tmp_path) -> None:
         document_mime="application/pdf",
         extraction=ExtractionOutput(
             run_id="run-1",
-            invoice_number=ExtractedField(value="INV-1", confidence=0.97),
+            invoice_number=ExtractedField(
+                value="INV-1",
+                confidence=0.97,
+                source_snippet="Merged invoice INV-1",
+            ),
             consignee_name=ExtractedField(value="ACME Corporation", confidence=0.97),
             hs_code=ExtractedField(value="8471.30", confidence=0.97),
             port_of_loading=ExtractedField(value="Shanghai, CN", confidence=0.97),
@@ -188,7 +199,11 @@ def test_save_pipeline_run_persists_document_extractions(tmp_path) -> None:
                 "filename": "invoice.pdf",
                 "extraction": ExtractionOutput(
                     run_id="run-1",
-                    invoice_number=ExtractedField(value="INV-1", confidence=0.97),
+                    invoice_number=ExtractedField(
+                        value="INV-1",
+                        confidence=0.97,
+                        source_snippet="Invoice No: INV-1",
+                    ),
                     consignee_name=ExtractedField(value="ACME Corporation", confidence=0.97),
                     hs_code=ExtractedField(value="8471.30", confidence=0.97),
                     port_of_loading=ExtractedField(value="Shanghai, CN", confidence=0.97),
@@ -224,48 +239,56 @@ def test_save_pipeline_run_persists_document_extractions(tmp_path) -> None:
                     "value": "INV-1",
                     "confidence": 0.97,
                     "uncertain": False,
+                    "source_snippet": "Invoice No: INV-1",
                 },
                 {
                     "field_name": "consignee_name",
                     "value": "ACME Corporation",
                     "confidence": 0.97,
                     "uncertain": False,
+                    "source_snippet": None,
                 },
                 {
                     "field_name": "hs_code",
                     "value": "8471.30",
                     "confidence": 0.97,
                     "uncertain": False,
+                    "source_snippet": None,
                 },
                 {
                     "field_name": "port_of_loading",
                     "value": "Shanghai, CN",
                     "confidence": 0.97,
                     "uncertain": False,
+                    "source_snippet": None,
                 },
                 {
                     "field_name": "port_of_discharge",
                     "value": "Los Angeles, US",
                     "confidence": 0.97,
                     "uncertain": False,
+                    "source_snippet": None,
                 },
                 {
                     "field_name": "incoterms",
                     "value": "FOB",
                     "confidence": 0.97,
                     "uncertain": False,
+                    "source_snippet": None,
                 },
                 {
                     "field_name": "description_of_goods",
                     "value": "Laptops",
                     "confidence": 0.97,
                     "uncertain": False,
+                    "source_snippet": None,
                 },
                 {
                     "field_name": "gross_weight",
                     "value": "100 KG",
                     "confidence": 0.97,
                     "uncertain": False,
+                    "source_snippet": None,
                 },
             ],
         },

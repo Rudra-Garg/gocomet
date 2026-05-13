@@ -1,4 +1,5 @@
-export default function ExtractionView({ fields }) {
+export default function ExtractionView({ fields, documentExtractions = [] }) {
+  const byField = groupDocumentExtractions(documentExtractions);
   return (
     <section className="panel">
       <header>
@@ -12,6 +13,7 @@ export default function ExtractionView({ fields }) {
             <tr>
               <th>Field</th>
               <th>Extracted Value</th>
+              <th>From Files</th>
               <th>Confidence</th>
               <th>Status</th>
             </tr>
@@ -21,6 +23,22 @@ export default function ExtractionView({ fields }) {
               <tr key={field.field_name}>
                 <td>{field.field_name}</td>
                 <td>{field.value || "Not found"}</td>
+                <td>
+                  {byField[field.field_name]?.length ? (
+                    <div className="extraction-file-list">
+                      {byField[field.field_name].map((item) => (
+                        <div className="extraction-file-item" key={item.filename}>
+                          <strong>{item.filename}</strong>
+                          <span>
+                            {item.value || "Not found"} · {Math.round(item.confidence * 100)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    "No per-file extraction"
+                  )}
+                </td>
                 <td>
                   <div className="confidence compact">
                     <span>{Math.round(field.confidence * 100)}%</span>
@@ -56,4 +74,21 @@ function confidenceClass(confidence) {
     return "medium";
   }
   return "low";
+}
+
+function groupDocumentExtractions(documentExtractions) {
+  const grouped = {};
+  for (const document of documentExtractions) {
+    for (const field of document.fields || []) {
+      if (!grouped[field.field_name]) {
+        grouped[field.field_name] = [];
+      }
+      grouped[field.field_name].push({
+        filename: document.filename,
+        value: field.value,
+        confidence: field.confidence,
+      });
+    }
+  }
+  return grouped;
 }

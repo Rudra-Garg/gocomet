@@ -10,6 +10,7 @@ class ExtractedField(BaseModel):
     value: Optional[str] = None
     confidence: float
     uncertain: bool = False
+    source_snippet: Optional[str] = None
 
     @model_validator(mode="after")
     def flag_uncertain(self):

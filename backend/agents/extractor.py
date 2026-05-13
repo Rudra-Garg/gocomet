@@ -12,8 +12,10 @@ from backend.pipeline.state import ExtractionOutput
 EXTRACTION_SYSTEM_PROMPT = (
     "You are a trade document extraction agent. Extract only what you can "
     "physically see in the document. For each field, return a value and a "
-    "confidence score from 0.0 to 1.0. If a field is not present or "
-    "illegible, return null for value and 0.0 for confidence. "
+    "confidence score from 0.0 to 1.0, plus a source_snippet that is an "
+    "exact document snippet of at most 120 characters supporting the value. "
+    "If a field is not present or illegible, return null for value and "
+    "source_snippet, and 0.0 for confidence. "
     "Never guess or infer. Return ONLY valid JSON matching the schema."
 )
 
@@ -57,16 +59,17 @@ def _build_prompt(run_id: str, retry_feedback: str) -> str:
 Return JSON with this exact top-level shape:
 {{
   "run_id": "{run_id}",
-  "invoice_number": {{"value": "string or null", "confidence": 0.0}},
-  "consignee_name": {{"value": "string or null", "confidence": 0.0}},
-  "hs_code": {{"value": "string or null", "confidence": 0.0}},
-  "port_of_loading": {{"value": "string or null", "confidence": 0.0}},
-  "port_of_discharge": {{"value": "string or null", "confidence": 0.0}},
-  "incoterms": {{"value": "string or null", "confidence": 0.0}},
-  "description_of_goods": {{"value": "string or null", "confidence": 0.0}},
-  "gross_weight": {{"value": "string or null", "confidence": 0.0}}
+  "invoice_number": {{"value": "string or null", "confidence": 0.0, "source_snippet": "exact source text or null"}},
+  "consignee_name": {{"value": "string or null", "confidence": 0.0, "source_snippet": "exact source text or null"}},
+  "hs_code": {{"value": "string or null", "confidence": 0.0, "source_snippet": "exact source text or null"}},
+  "port_of_loading": {{"value": "string or null", "confidence": 0.0, "source_snippet": "exact source text or null"}},
+  "port_of_discharge": {{"value": "string or null", "confidence": 0.0, "source_snippet": "exact source text or null"}},
+  "incoterms": {{"value": "string or null", "confidence": 0.0, "source_snippet": "exact source text or null"}},
+  "description_of_goods": {{"value": "string or null", "confidence": 0.0, "source_snippet": "exact source text or null"}},
+  "gross_weight": {{"value": "string or null", "confidence": 0.0, "source_snippet": "exact source text or null"}}
 }}
 
+Every source_snippet must be copied exactly from the document, must be 120 characters or fewer, and must be null when value is null.
 For hs_code, include every visible HS/HTS code as a comma-separated string.
 For incoterms, return only the standard code, such as FOB or CIF, not the place.
 """.strip()

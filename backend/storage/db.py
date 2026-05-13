@@ -47,7 +47,8 @@ def init_db(db_path: str) -> None:
                 field_name TEXT,
                 value TEXT,
                 confidence REAL,
-                uncertain INTEGER
+                uncertain INTEGER,
+                source_snippet TEXT
             );
 
             CREATE TABLE IF NOT EXISTS document_extraction_fields (
@@ -58,7 +59,8 @@ def init_db(db_path: str) -> None:
                 field_name TEXT,
                 value TEXT,
                 confidence REAL,
-                uncertain INTEGER
+                uncertain INTEGER,
+                source_snippet TEXT
             );
 
             CREATE TABLE IF NOT EXISTS validation_results (
@@ -168,9 +170,9 @@ def save_pipeline_run(state: PipelineState, db_path: str) -> None:
                 connection.executemany(
                     """
                     INSERT INTO extraction_fields (
-                        run_id, field_name, value, confidence, uncertain
+                        run_id, field_name, value, confidence, uncertain, source_snippet
                     )
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -179,6 +181,7 @@ def save_pipeline_run(state: PipelineState, db_path: str) -> None:
                             getattr(extraction, field_name).value,
                             getattr(extraction, field_name).confidence,
                             int(getattr(extraction, field_name).uncertain),
+                            getattr(extraction, field_name).source_snippet,
                         )
                         for field_name in EXTRACTION_FIELD_NAMES
                     ],
@@ -239,7 +242,7 @@ def get_run(run_id: str, db_path: str) -> dict | None:
         extraction = _fetch_all(
             connection,
             """
-            SELECT field_name, value, confidence, uncertain
+            SELECT field_name, value, confidence, uncertain, source_snippet
             FROM extraction_fields
             WHERE run_id = ?
             ORDER BY id
@@ -287,7 +290,7 @@ def get_run(run_id: str, db_path: str) -> dict | None:
         document_extractions = _fetch_all(
             connection,
             """
-            SELECT attachment_index, filename, field_name, value, confidence, uncertain
+            SELECT attachment_index, filename, field_name, value, confidence, uncertain, source_snippet
             FROM document_extraction_fields
             WHERE run_id = ?
             ORDER BY attachment_index, id
@@ -565,6 +568,7 @@ def _group_document_extractions(rows: list[dict]) -> list[dict]:
                 "value": row["value"],
                 "confidence": row["confidence"],
                 "uncertain": bool(row["uncertain"]),
+                "source_snippet": row["source_snippet"],
             },
         )
     return [
@@ -589,9 +593,9 @@ def _write_document_extractions(
     connection.executemany(
         """
         INSERT INTO document_extraction_fields (
-            run_id, attachment_index, filename, field_name, value, confidence, uncertain
+            run_id, attachment_index, filename, field_name, value, confidence, uncertain, source_snippet
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -602,6 +606,7 @@ def _write_document_extractions(
                 getattr(item["extraction"], field_name).value,
                 getattr(item["extraction"], field_name).confidence,
                 int(getattr(item["extraction"], field_name).uncertain),
+                getattr(item["extraction"], field_name).source_snippet,
             )
             for item in document_extractions
             for field_name in EXTRACTION_FIELD_NAMES

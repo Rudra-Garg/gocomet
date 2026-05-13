@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
 
-export default function QueryPanel({ activeRunId, apiBase, onRunSelect }) {
+export default function QueryPanel({ apiBase, onNavigateToRun }) {
   const [question, setQuestion] = useState("Show runs with mismatched fields");
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -31,21 +31,29 @@ export default function QueryPanel({ activeRunId, apiBase, onRunSelect }) {
   const runIdColumnIndex = result?.columns.indexOf("run_id") ?? -1;
 
   return (
-    <section className="panel">
-      <header>
-        <h2>Natural language query</h2>
-      </header>
+    <section className="panel query-panel-full">
       <form className="query-form" onSubmit={submit}>
-        <input value={question} onChange={(event) => setQuestion(event.target.value)} />
+        <div className="query-input-wrapper">
+          <Search size={20} className="query-icon" />
+          <input
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="Ask a question about your documents..."
+          />
+        </div>
         <button type="submit" disabled={isLoading}>
-          <Search size={16} />
-          Query
+          {isLoading ? "Querying..." : "Run Query"}
         </button>
       </form>
+
       {error && <p className="error-text">{error}</p>}
+
       {result && (
         <div className="query-result">
-          <pre>{result.sql}</pre>
+          <div className="query-meta">
+            <pre className="sql-preview">{result.sql}</pre>
+            <span className="badge clear">{result.rows.length} rows returned</span>
+          </div>
           <table>
             <thead>
               <tr>
@@ -61,25 +69,9 @@ export default function QueryPanel({ activeRunId, apiBase, onRunSelect }) {
 
                 return (
                   <tr
-                    className={[
-                      isClickableRun ? "query-run-row" : "",
-                      runId === activeRunId ? "active" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
+                    className={isClickableRun ? "query-run-row" : ""}
                     key={index}
-                    onClick={isClickableRun ? () => void onRunSelect(runId) : undefined}
-                    tabIndex={isClickableRun ? 0 : undefined}
-                    onKeyDown={
-                      isClickableRun
-                        ? (event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              void onRunSelect(runId);
-                            }
-                          }
-                        : undefined
-                    }
+                    onClick={isClickableRun ? () => onNavigateToRun(runId) : undefined}
                   >
                     {row.map((cell, cellIndex) => (
                       <td key={cellIndex}>
@@ -89,7 +81,7 @@ export default function QueryPanel({ activeRunId, apiBase, onRunSelect }) {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              void onRunSelect(runId);
+                              onNavigateToRun(runId);
                             }}
                           >
                             {runId}
@@ -99,7 +91,7 @@ export default function QueryPanel({ activeRunId, apiBase, onRunSelect }) {
                         )}
                       </td>
                     ))}
-                </tr>
+                  </tr>
                 );
               })}
             </tbody>
